@@ -1,6 +1,6 @@
 Host *
 	User ubuntu
-	IdentityFile ~/.ssh/private_key.pem
+	IdentityFile ~/.ssh/id_rsa
 	StrictHostKeyChecking no
 	PasswordAuthentication no
 
