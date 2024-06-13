@@ -1,127 +1,101 @@
 ---
-- hosts: webservers
+- name: Configure webservers
+  hosts: webservers
   become: true
   become_method: sudo
   gather_facts: true
+
   tasks:
-    - name: apt update
+    - name: Update apt cache
       apt:
         update_cache: true
    
-    - name: Installing pip3
+    - name: Install pip3
       apt:
        name: python3-pip
        state: latest
-       update_cache: true
 
-    - name: Installing flask
+    - name: Install Flask using pip3
       pip:
         executable: pip3
         name: flask
         state: latest
 
-    - name: Installing Gunicorn
+    - name: Install Gunicorn, SNMP, snmp-mibs-downloader, and snmpd
       apt:
-        name: gunicorn
-
-    - name: Installing SNMP
-      apt:
-        name: snmp
+        name: "{{ item }}"
         state: latest
+      loop:
+        - gunicorn
+        - snmp
+        - snmp-mibs-downloader
+        - snmpd
 
-    - name: Install snmp-mibs-downloader
-      apt:
-        name: snmp-mibs-downloader
-        state: latest
-
-    - name: Installing snmpd
-      apt:
-        name: snmpd
-        state: latest
-    
-    - name: Copy the config file of snmpd 
+    - name: Deploy snmpd configuration
       template:
-         src: /$PWD/snmpd.conf
+         src: "{{ playbook_dir }}/snmpd.conf"
          dest: /etc/snmp/snmpd.conf
     
-    - name: Restarting snmpd
+    - name: Ensure snmpd is running and enabled
       service:
          name: snmpd
          state: restarted
          enabled: yes
 
-    - name: Copy Application2.py
+    - name: Deploy application
       copy:
-        src: /$PWD/application2.py
+        src: "{{ playbook_dir }}/application2.py"
         dest: /home/ubuntu/application2.py
         owner: ubuntu
         mode: '0644'
     
-    - name: Running Flask application
+    - name: Run Flask application
       shell: gunicorn -w 2 -D -b 0.0.0.0:8080 application2:app
 
-
-# haproxy configuration
-- hosts: all
-  gather_facts: true
-- hosts: HAproxy
+- name: Configure HAproxy and Nginx
+  hosts: HAproxy
   become: true
+  gather_facts: true
   
   tasks:
-
-    - name: apt update
+    - name: Update apt cache
       apt:
         update_cache: yes
     
-    - name: Installing HAPROXY
+    - name: Install HAproxy, Nginx, and SNMP
       apt:
-        name: haproxy
-        state: present
+        name: "{{ item }}"
+        state: latest
+      loop:
+        - haproxy
+        - nginx
+        - snmp
 
-    - name: Configure haproxy
+    - name: Deploy HAproxy configuration
       template:
-        src: /$PWD/haproxy.cfg.j2
+        src: "{{ playbook_dir }}/haproxy.cfg.j2"
         dest: /etc/haproxy/haproxy.cfg
     
-    - name: Restart haproxy
+    - name: Ensure HAproxy is running
       service:
         name: haproxy
         state: restarted
 
-    - name: Installing Nginx
-      apt:
-        name: nginx
-        state: latest
-
-    - name: Configure Nginx
+    - name: Deploy Nginx configuration
       template:
-        src: /$PWD/udp_loadbalancer.conf.j2
+        src: "{{ playbook_dir }}/udp_loadbalancer.conf.j2"
         dest: /etc/nginx/nginx.conf
 
-    - name: Restart Nginx
+    - name: Ensure Nginx is running
       service:
         name: nginx
         state: restarted
 
-    - name: Installing SNMP
-      apt: 
-        name: snmp 
-        state: latest
-
-    - name: snmp request 1
+    - name: Perform SNMP requests
       shell:  "snmpwalk -t 1 -r 1 -v2c -c public localhost:1611 iso.3.6.1.2.1.1.1.0"
-      register: "output"
+      register: output
+      loop: [1, 2, 3]
+      loop_control:
+        label: "SNMP request {{ loop.index }}"
     - debug: var=output.stdout_lines
-
-    - name: snmp request 2
-      shell:  "snmpwalk -t 1 -r 1 -v2c -c public localhost:1611 iso.3.6.1.2.1.1.1.0"
-      register: "output"
-    - debug: var=output.stdout_lines
-
-    - name: snmp request 3
-      shell:  "snmpwalk -t 1 -r 1 -v2c -c public localhost:1611 iso.3.6.1.2.1.1.1.0"
-      register: "output"
-    - debug: var=output.stdout_lines    
-
-
-  
+...
