@@ -3,5 +3,5 @@ I've deployed a total of five servers using City Cloud. The BastionNSO host and 
 To deploy our Flask application on the development servers and set up load balancing, I am using the Ansible playbook site.yaml. This playbook handles both the application deployment and the configuration of HAProxy for load balancing.
 
 For testing, I simply need to curl HAProxy's IP address, which should return the time and hostname of the server that responds.
-
+###
 Additionally, implemented UDP load balancing using Nginx.
