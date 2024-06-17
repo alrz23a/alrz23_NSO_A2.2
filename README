@@ -5,4 +5,3 @@ To deploy our Flask application on the development servers and set up load balan
 For testing, I simply need to curl HAProxy's IP address, which should return the time and hostname of the server that responds.
 ###
 Additionally, implemented UDP load balancing using Nginx.
-
