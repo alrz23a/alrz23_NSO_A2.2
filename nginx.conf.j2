@@ -16,6 +16,7 @@ stream {
        {% endfor %}
         }
      server {
+        listen 161 udp;
         listen 1611 udp;
         proxy_pass nginx_udp;
         proxy_responses 1;
