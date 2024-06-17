@@ -115,14 +115,14 @@
         update_cache: yes
         state: latest
 
-    - name: configure nginx udp port
-      template:
-             src: nginxport.conf
-             dest: /etc/nginx/sites-available/default
+    #- name: configure nginx udp port
+     # template:
+       #      src: nginxport.conf
+        #     dest: /etc/nginx/sites-available/default
 
     - name: configure udp for loadbalancing
       template:
-             src: nginxudp.conf
+             src: nginx.conf.j2
              dest: /etc/nginx/nginx.conf
 
     - name: Restart Nginx
