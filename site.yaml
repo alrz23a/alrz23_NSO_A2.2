@@ -122,7 +122,7 @@
 
     - name: configure udp for loadbalancing
       template:
-             src: nginxudp.conf
+             src: nginxudp.conf.j2
              dest: /etc/nginx/nginx.conf
 
     - name: Restart Nginx
