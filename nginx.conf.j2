@@ -4,20 +4,39 @@ pid /run/nginx.pid;
 include /etc/nginx/modules-enabled/*.conf;
 
 events {
-        worker_connections 1024;
+        worker_connections 768;
         # multi_accept on;
 }
 
+# Existing UDP configuration
 stream {
+     upstream nginx_udp {
+       {% for host in groups['webservers'] %}
+      server {{ hostvars[host]["ansible_default_ipv4"]["address"] }}:161;
+       {% endfor %}
+     }
+     server {
+        listen 6000 udp;
+        proxy_pass nginx_udp;
+        proxy_responses 1;
+     }
+}
 
-    upstream web_servers {
-        {% for host in groups['webservers'] %}
-         server {{ hostvars[host]["ansible_default_ipv4"]["address"] }}:161;
-        {% endfor %}
-         }
-
+# New HTTP configuration
+http {
     server {
-        listen 0.0.0.0:1611 udp;
-        proxy_pass web_servers;
+        listen 80;
+        server_name localhost;
+
+        location / {
+            root /var/www/html;
+            index index.html index.htm;
+        }
+
+        # Health check endpoint
+        location /health {
+            return 200 'OK';
+            add_header Content-Type text/plain;
+        }
     }
 }
