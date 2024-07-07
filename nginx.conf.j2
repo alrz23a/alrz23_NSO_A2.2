@@ -11,7 +11,7 @@ events {
 # Existing UDP configuration
 stream {
     upstream nginx_udp {
-        {% for host in groups['devservers'] %}
+        {% for host in groups['webservers'] %}
         server {{ hostvars[host]["ansible_default_ipv4"]["address"] }}:161;
         {% endfor %}
     } 
