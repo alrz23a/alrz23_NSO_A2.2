@@ -8,7 +8,7 @@
         update_cache: true
 
 - name: Configuring HAproxy loadbalancer
-  hosts: HAproxy
+  hosts: main_proxy standby_proxy
   become: true
   tasks:
 
@@ -22,12 +22,6 @@
         state: present
         update_cache: true
       
-    - name: Installing keepalived
-      apt:
-        name: keepalived
-        state: present
-        update_cache: true
-
     - name: sudo sysctl -w net.ipv4.ip_nonlocal_bind=1
       become: true
       shell: sysctl -w net.ipv4.ip_nonlocal_bind=1
@@ -74,13 +68,6 @@
         name: haproxy
         state: restarted
 
-    - name: restart keepalived
-      service:
-        name: keepalived
-        state: restarted
-
-- hosts: HAproxy
-  become: true
 
 - hosts: webservers
   become: true
@@ -145,11 +132,11 @@
       slurp:
         src: /etc/haproxy/uipassword
       register: password_file_content
- 
+
     - name: Set username and password from 'uipassword' file
       set_fact:
-        haproxy_username: "{{ (password_file_content.content | b64decode ).split(':')[0] }}"
-        haproxy_password: "{{ (password_file_content.content | b64decode ).split(':')[1] }}"
+        haproxy_username: "{{ (password_file_content.content | b64decode).split(':')[0] }}"
+        haproxy_password: "{{ (password_file_content.content | b64decode).split(':')[1] }}"
 
     - name: Edit HAproxy configuration
       blockinfile:
