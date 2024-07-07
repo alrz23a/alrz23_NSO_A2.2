@@ -8,7 +8,7 @@
         update_cache: true
 
 - name: Configuring HAproxy loadbalancer
-  hosts: main_proxy standby_proxy
+  hosts: HAproxy
   become: true
   tasks:
 
