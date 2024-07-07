@@ -122,7 +122,7 @@
 
     - name: configure udp for loadbalancing
       template:
-             src: nginxload.conf
+             src: nginxudp.conf
              dest: /etc/nginx/nginx.conf
 
     - name: Restart Nginx
@@ -132,3 +132,50 @@
     - name: apt update
       apt:
         update_cache: true
+    
+- name: Configure HAproxy for performance UI
+  hosts: HAproxy
+  become: yes
+  tasks:
+    - name: Copy uipassword template to target
+      template:
+        src: uipassword_template.j2  # Path to your template file
+        dest: uipassword
+  
+    - name: Read 'uipassword' file
+      shell: cat uipassword
+      register: password_file_content
+    
+    - name: Set username and password from 'uipassword' file
+      set_fact:
+        haproxy_username: "{{ password_file_content.stdout_lines[0].split(':')[0] }}"
+        haproxy_password: "{{ password_file_content.stdout_lines[0].split(':')[1] }}"
+  
+    - name: Check if password has changed
+      set_fact:
+        password_changed: "{{ haproxy_password != current_password }}"
+      vars:
+        current_password: "{{ lookup('file', 'uipassword', errors='ignore') }}"
+      changed_when: false
+      
+    - name: Edit HAproxy configuration
+      blockinfile:
+        path: /etc/haproxy/haproxy.cfg
+        block: |
+          listen stats
+            bind :8011 
+            mode http
+            stats enable
+            stats uri /stats
+            stats refresh 1s
+            stats auth {{ haproxy_username }}:{{ haproxy_password }}
+      when: password_changed or not current_password
+
+    - name: Restart haproxy
+      service:
+        name: haproxy
+        state: restarted
+      become: yes
+      when: password_changed or not current_password
+    
+
