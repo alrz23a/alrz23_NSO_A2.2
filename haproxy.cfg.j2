@@ -34,7 +34,7 @@ defaults
         errorfile 504 /etc/haproxy/errors/504.http
 
 frontend haproxynode
-        bind *:5000
+        bind *:80
         mode http
         default_backend backendnodes
 
@@ -43,5 +43,5 @@ backend backendnodes
         mode http
         option forwardfor
 {% for host in groups["webservers"] %}
-        server {{ host }} {{ hostvars[host]["ansible_default_ipv4"]["address"] }}:5000 check
+        server {{ host }} {{ hostvars[host]["ansible_default_ipv4"]["address"] }}:80 check
 {% endfor %}
