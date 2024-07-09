@@ -1,4 +1,14 @@
 ---
+- hosts: all
+  gather_facts: true
+  become: true
+    
+  tasks:
+    - name: apt update
+      apt:
+        update_cache: true
+
+        
 - name: Configuring HAproxy loadbalancer
   hosts: HAproxy
   become: true
@@ -19,15 +29,6 @@
         name: keepalived
         state: present
         update_cache: true
-
-    - name: sudo sysctl -w net.ipv4.ip_nonlocal_bind=1
-      become: true
-      shell: sysctl -w net.ipv4.ip_nonlocal_bind=1
-
-    - name: gather server ip addresses
-      setup:
-            filter: ansible_default_ipv4.address     
-         
     
     - name: copy files haproxy.cfg
       template:
@@ -132,4 +133,3 @@
       service:
               name: snmpd
               state: restarted    
-              
