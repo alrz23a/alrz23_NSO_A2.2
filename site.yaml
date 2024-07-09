@@ -1,22 +1,17 @@
 ---
+
 - hosts: all
   gather_facts: true
   become: true
-    
   tasks:
     - name: apt update
       apt:
         update_cache: true
 
-        
 - name: Configuring HAproxy loadbalancer
   hosts: HAproxy
   become: true
   tasks:
-
-    - name : sudo wait
-      become: true
-      shell: while sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 5; done;
 
     - name: Installing HAproxy
       apt:
@@ -24,11 +19,11 @@
         state: present
         update_cache: true
       
-    - name: Installing keepalived
-      apt:
-        name: keepalived
-        state: present
-        update_cache: true
+
+    - name: gather server ip addresses
+      setup:
+            filter: ansible_default_ipv4.address     
+         
     
     - name: copy files haproxy.cfg
       template:
@@ -36,25 +31,92 @@
         dest: "/etc/haproxy/haproxy.cfg"
       notify:
         - restart haproxy
-
-    - name: install nginx, snmpd, snmp-mibs-downloader
-      apt: 
+    - name: install nginx
+      apt:
+        name: nginx
+        state: present
         update_cache: true
-        name: [ 'nginx', 'snmpd','snmp', 'snmp-mibs-downloader' ] 
+    - name: Copy Nginx configuration for UDP load balancing
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/conf.d/udp_load_balancer.conf
+      notify:
+        - restart nginx
+
+  handlers:
+
+    - name: restart haproxy
+      service:
+       name: haproxy
+       state: restarted
+
+    - name: restart nginx
+      service:
+        name: nginx
+        state: restarted
+    
+    - name: restart snmpd
+      service:
+        name: snmpd
+        state: restarted
+
+
+- hosts: webservers
+  become: true
+  tasks:
+    - name: install pip
+      apt:
+        name: python3-pip
+        state: present
+    
+    - name: install flask
+      pip:
+        executable: pip3
+        name: flask
+        state: latest
+    - name: install gunicorn
+      pip:
+        executable: pip3
+        name: gunicorn
         state: latest
 
-    - name: copy nginx config files
+    - name: createnew directory
+      file:
+              path: "/home/flask-app/"
+              state: directory
+    - name: copy app.py to webservers
       template:
-         src: nginx.conf.j2
-         dest: "/etc/nginx/nginx.conf"
+        src: "service.py"
+        dest: "/home/flask-app/app.py"
+
+
+    - name: start flask app
+      shell: |
+        cd /home/flask-app/
+        gunicorn --bind 0.0.0.0:80 app:app&  
     
+    - name: snmpd
+      apt:
+        name: snmpd
+        state: present
+        update_cache: true
+    - name: copy snmpd.conf
+      template:
+        src: snmpd.conf.j2
+        dest: "/etc/snmp/snmpd.conf"
+      notify:
+        - restart snmpd
+
+- hosts: HAproxy
+  become: true
+  tasks:
     - name: Copy uipassword template to target
       template:
-        src: uipassword_template.j2  # Path to your template file
+        src: uipassword_template.j2
         dest: /etc/haproxy/uipassword
 
     - name: Read 'uipassword' file
-      shell: cat /etc/haproxy/uipassword
+      shell: cat uipassword
       register: password_file_content
 
     - name: Set username and password from 'uipassword' file
@@ -62,74 +124,29 @@
         haproxy_username: "{{ password_file_content.stdout_lines[0].split(':')[0] }}"
         haproxy_password: "{{ password_file_content.stdout_lines[0].split(':')[1] }}"
 
-    - name: Restart haproxy
+    - name: Check if password has changed
+      set_fact:
+        password_changed: "{{ haproxy_password != current_password }}"
+      vars:
+        current_password: "{{ lookup('file', 'uipassword', errors='ignore') }}"
+      changed_when: false
+
+    - name: Edit HAproxy configuration
+      blockinfile:
+        path: /etc/haproxy/haproxy.cfg
+        block: |
+          listen stats
+            bind :8011
+            mode http
+            stats enable
+            stats uri /stats
+            stats refresh 1s
+            stats auth {{ haproxy_username }}:{{ haproxy_password }}
+      when: password_changed or not current_password
+
+    - name: Restart HAproxy
       service:
         name: haproxy
         state: restarted
-
-    - name: Restart nginx
-      service:
-        name: nginx
-        state: restarted
-
-    - name: Allow ports 80, 8011 for HTTP and 1611 for UDP
-      firewalld:
-        port: "{{ item }}"
-        permanent: true
-        state: enabled
-        immediate: true
-      with_items:
-        - 80/tcp
-        - 8011/tcp
-        - 1611/udp
-
-- name: Setup Flask App and SNMP Daemon
-  hosts: webservers
-  become: true
-  tasks:
-    - name: Install Flask and Gunicorn
-      pip:
-        name:
-          - flask
-          - gunicorn
-
-    - name: install flask
-      pip:
-        executable: pip3
-        name: flask
-        state: latest
-
-    - name: install gunicorn
-      pip:
-        executable: pip3
-        name: gunicorn
-        state: latest
-    - name: createnew directory
-      file:
-              path: "/home/flask-app/"
-              state: directory
-
-    - name: copy app.py to devservers
-      template:
-        src: "application2.py"
-        dest: "/home/flask-app/app.py"
-
-
-    - name: start flask app
-      shell: |
-        cd /home/flask-app/
-        gunicorn --bind 0.0.0.0:5000 app:app&  
-
-    - name: install snmpd
-      apt:
-              name: snmpd
-              state: latest
-    
-    - name: cpy snmpd conf file
-      template:
-              src: snmpd.conf.j2
-              dest: "/etc/snmp/snmpd.conf"
-    - name: run snmpd
-      service:
-              name: snmpd
-              state: restarted    
+      become: true
+      when: password_changed or not current_password
