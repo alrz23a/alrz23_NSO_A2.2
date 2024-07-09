@@ -49,7 +49,7 @@
         - { src: 'snmpd.conf.j2', dest: '/etc/snmp/snmpd.conf' }
       notify:
         - restart services
-    
+
     - name: set permissions for web root
       file:
         path: /var/www/html
@@ -60,15 +60,21 @@
         recurse: yes
 
   handlers:
-    - name: restart services
+
+    - name: restart haproxy
       service:
-        name: "{{ item }}"
+       name: haproxy
+       state: restarted
+
+    - name: restart nginx
+      service:
+        name: nginx
         state: restarted
-      with_items:
-        - haproxy
-        - keepalived
-        - nginx
-        - snmpd
+    
+    - name: restart snmpd
+      service:
+        name: snmpd
+        state: restarted
 
 
 - hosts: webservers
