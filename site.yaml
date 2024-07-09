@@ -1,18 +1,10 @@
-- hosts: all
-  gather_facts: true
-  become: true
-    
-  tasks:
-    - name: apt update
-      apt:
-        update_cache: true
-
+---
 - name: Configuring HAproxy loadbalancer
   hosts: HAproxy
   become: true
   tasks:
 
-    - name: sudo wait
+    - name : sudo wait
       become: true
       shell: while sudo fuser /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 5; done;
 
@@ -22,14 +14,21 @@
         state: present
         update_cache: true
       
+    - name: Installing keepalived
+      apt:
+        name: keepalived
+        state: present
+        update_cache: true
+
     - name: sudo sysctl -w net.ipv4.ip_nonlocal_bind=1
       become: true
       shell: sysctl -w net.ipv4.ip_nonlocal_bind=1
 
     - name: gather server ip addresses
       setup:
-        filter: ansible_default_ipv4.address     
+            filter: ansible_default_ipv4.address     
          
+    
     - name: copy files haproxy.cfg
       template:
         src: haproxy.cfg.j2
@@ -37,49 +36,62 @@
       notify:
         - restart haproxy
 
-    - name: install nginx, snmpd, snmp, snmp-mibs-downloader
+    - name: install nginx, snmpd, snmp-mibs-downloader
       apt: 
         update_cache: true
-        name: ['nginx', 'snmp','snmpd', 'snmp-mibs-downloader']
+        name: [ 'nginx', 'snmpd','snmp', 'snmp-mibs-downloader' ] 
         state: latest
-    
+
     - name: copy nginx config files
       template:
-        src: nginx.conf.j2
-        dest: "/etc/nginx/nginx.conf"
+         src: nginx.conf.j2
+         dest: "/etc/nginx/nginx.conf"
+    
+    - name: Copy uipassword template to target
+      template:
+        src: uipassword_template.j2  # Path to your template file
+        dest: /etc/haproxy/uipassword
 
-    - name: set permissions for web root
-      file:
-        path: /var/www/html
-        state: directory
-        owner: www-data
-        group: www-data
-        mode: '0755'
-        recurse: yes
+    - name: Read 'uipassword' file
+      shell: cat /etc/haproxy/uipassword
+      register: password_file_content
 
+    - name: Set username and password from 'uipassword' file
+      set_fact:
+        haproxy_username: "{{ password_file_content.stdout_lines[0].split(':')[0] }}"
+        haproxy_password: "{{ password_file_content.stdout_lines[0].split(':')[1] }}"
 
-  handlers:
-    - name: restart haproxy
+    - name: Restart haproxy
       service:
         name: haproxy
         state: restarted
-  
-    - name: nginx start
+
+    - name: Restart nginx
       service:
         name: nginx
         state: restarted
-    
 
+    - name: Allow ports 80, 8011 for HTTP and 1611 for UDP
+      firewalld:
+        port: "{{ item }}"
+        permanent: true
+        state: enabled
+        immediate: true
+      with_items:
+        - 80/tcp
+        - 8011/tcp
+        - 1611/udp
 
-
-- hosts: webservers
+- name: Setup Flask App and SNMP Daemon
+  hosts: webservers
   become: true
   tasks:
-    - name: install pip
-      apt:
-        name: python3-pip
-        state: present
-    
+    - name: Install Flask and Gunicorn
+      pip:
+        name:
+          - flask
+          - gunicorn
+
     - name: install flask
       pip:
         executable: pip3
@@ -91,16 +103,16 @@
         executable: pip3
         name: gunicorn
         state: latest
-
-    - name: create new directory
+    - name: createnew directory
       file:
-        path: "/home/flask-app/"
-        state: directory
+              path: "/home/flask-app/"
+              state: directory
 
     - name: copy app.py to devservers
       template:
-        src: "service.py"
+        src: "application2.py"
         dest: "/home/flask-app/app.py"
+
 
     - name: start flask app
       shell: |
@@ -109,93 +121,15 @@
 
     - name: install snmpd
       apt:
-        name: snmpd
-        state: latest
+              name: snmpd
+              state: latest
     
-    - name: copy snmpd conf file
+    - name: cpy snmpd conf file
       template:
-        src: snmpd.conf.j2
-        dest: "/etc/snmp/snmpd.conf"
-
+              src: snmpd.conf.j2
+              dest: "/etc/snmp/snmpd.conf"
     - name: run snmpd
       service:
-        name: snmpd
-        state: restarted    
-
-
-- name: Configure HAproxy for performance UI
-  hosts: HAproxy
-  become: true
-  tasks:
-    - name: Install firewalld
-      package:
-        name: firewalld
-        state: present
-
-    - name: Install required firewalld Python module
-      package:
-        name: python3-firewall
-        state: present
-
-    - name: Start and enable firewalld service
-      service:
-        name: firewalld
-        state: started
-        enabled: true
-
-    - name: Copy uipassword template to target
-      template:
-        src: uipassword_template.j2  # Path to your template file
-        dest: uipassword
-
-    - name: Read 'uipassword' file
-      shell: cat uipassword
-      register: password_file_content
-
-    - name: Set username and password from 'uipassword' file
-      set_fact:
-        haproxy_username: "{{ password_file_content.stdout_lines[0].split(':')[0] }}"
-        haproxy_password: "{{ password_file_content.stdout_lines[0].split(':')[1] }}"
-
-    - name: Check if password has changed
-      set_fact:
-        password_changed: "{{ haproxy_password != current_password }}"
-      vars:
-        current_password: "{{ lookup('file', 'uipassword', errors='ignore') }}"
-      changed_when: false
-
-    - name: Edit HAproxy configuration
-      blockinfile:
-        path: /etc/haproxy/haproxy.cfg
-        block: |
-          listen stats
-            bind :8011
-            mode http
-            stats enable
-            stats uri /stats
-            stats refresh 1s
-            stats auth {{ haproxy_username }}:{{ haproxy_password }}
-      when: password_changed or not current_password
-
-    - name: Restart haproxy
-      service:
-        name: haproxy
-        state: restarted
-      become: true
-      when: password_changed or not current_password
-
-    - name: Allow port 8011
-      firewalld:
-        port: 8011/tcp
-        permanent: true
-        state: enabled
-        immediate: true
-      become: true
-
-    - name: Allow port 80
-      firewalld:
-        port: 80/tcp
-        permanent: true
-        state: enabled
-        immediate: true
-      become: true
+              name: snmpd
+              state: restarted    
+              
