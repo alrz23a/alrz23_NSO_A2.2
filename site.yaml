@@ -192,4 +192,10 @@
         immediate: true
       become: true
 
-        
+    - name: Allow port 80
+      firewalld:
+        port: 80/tcp
+        permanent: true
+        state: enabled
+        immediate: true
+      become: true
