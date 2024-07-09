@@ -31,17 +31,25 @@
         dest: "/etc/haproxy/haproxy.cfg"
       notify:
         - restart haproxy
+    - name: snmp-mibs-downloader
+      apt:
+        name: snmp-mibs-downloader
+        state: present
+        update_cache: true
+        
     - name: install nginx
       apt:
         name: nginx
         state: present
         update_cache: true
+
     - name: Copy Nginx configuration for UDP load balancing
       template:
         src: nginx.conf.j2
         dest: /etc/nginx/conf.d/udp_load_balancer.conf
       notify:
         - restart nginx
+    -
 
   handlers:
 
@@ -100,6 +108,7 @@
         name: snmpd
         state: present
         update_cache: true
+    
     - name: copy snmpd.conf
       template:
         src: snmpd.conf.j2
