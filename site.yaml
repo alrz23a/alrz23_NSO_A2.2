@@ -117,7 +117,7 @@
 
 
 - name: Configure HAproxy for performance UI
-  hosts: main_proxy standby_proxy
+  hosts: HAproxy
   become: true
   tasks:
     - name: Install firewalld
@@ -139,7 +139,7 @@
     - name: Copy uipassword template to target
       template:
         src: uipassword_template.j2  # Path to your template file
-        dest: /etc/haproxy/uipassword
+        dest: uipassword
 
     - name: Read 'uipassword' file
       shell: cat uipassword
